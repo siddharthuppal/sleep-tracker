@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Sleep Tracker</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%23d97757'/%3E%3Cpath d='M29.2 23.8A11 11 0 0 1 16.2 10.8a11 11 0 1 0 13 13z' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+  /* Page tokens: the same names the Claude dashboard uses, set for light and dark. */
+  :root {
+    --font-anthropic-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-anthropic-serif: ui-serif, "New York", Georgia, "Times New Roman", serif;
+    --cds-font-size-caption: 12.5px;
+    --cds-font-size-body: 14px;
+    --cds-font-size-heading: 16px;
+    --cds-font-size-title: 22px;
+    --cds-font-weight-medium: 500;
+    --cds-gap-xs: 4px;
+    --cds-gap-sm: 8px;
+    --cds-gap-md: 16px;
+    --cds-pad-sm: 8px;
+    --cds-pad-md: 12px;
+    --cds-pad-lg: 16px;
+    --cds-radius: 8px;
+
+    --color-bg: #fbfbfa;
+    --color-panel: #ffffff;
+    --color-fg: #1f1e1d;
+    --color-fg-muted: #6b6a66;
+    --color-border-line: #e6e4df;
+    --color-ok: #2e7d4f;
+    --color-bad: #b4392e;
+    --cds-text-secondary: #6b6a66;
+    --cds-chart-grid: #ecebe7;
+    --cds-chart-axis: #c8c6c0;
+    --cds-chart-reference: #8c8a84;
+    --cds-chart-muted: #b5b3ac;
+    --cds-surface-popover: #ffffff;
+    --cds-border: #e2e0da;
+    --cds-shadow-popover: 0 6px 24px rgba(20, 20, 19, .12);
+    --skeleton: #efeee9;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-bg: #1c1c1a;
+      --color-panel: #262624;
+      --color-fg: #ecebe6;
+      --color-fg-muted: #a3a19a;
+      --color-border-line: #3a3935;
+      --color-ok: #63b783;
+      --color-bad: #e5786c;
+      --cds-text-secondary: #a3a19a;
+      --cds-chart-grid: #34332f;
+      --cds-chart-axis: #4c4a45;
+      --cds-chart-reference: #8f8d86;
+      --cds-chart-muted: #6e6c66;
+      --cds-surface-popover: #2e2d2b;
+      --cds-border: #44433e;
+      --cds-shadow-popover: 0 6px 24px rgba(0, 0, 0, .45);
+      --skeleton: #33322e;
+      color-scheme: dark;
+    }
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-anthropic-sans);
+    font-size: var(--cds-font-size-body);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1360px; margin: 0 auto; padding: 24px 24px 40px; }
+  @media (max-width: 520px) { .page { padding: 16px 12px 32px; } }
+
+  /* Range picker */
+  .dash-select {
+    appearance: none; -webkit-appearance: none;
+    font: inherit; font-size: var(--cds-font-size-body); color: var(--color-fg);
+    background: var(--color-panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238c8a84' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 10px center;
+    border: 1px solid var(--color-border-line); border-radius: var(--cds-radius);
+    padding: 6px 30px 6px 10px; cursor: pointer;
+  }
+  .dash-select:focus-visible { outline: 2px solid var(--ht-blue, #4a83c4); outline-offset: 2px; }
+
+  /* Loading placeholders */
+  .dash-skeleton { position: relative; color: transparent !important; }
+  .dash-skeleton::after {
+    content: ""; position: absolute; inset: 1px 0; min-width: 3em; border-radius: 6px;
+    background: linear-gradient(90deg, var(--skeleton), color-mix(in srgb, var(--skeleton) 50%, var(--color-panel)), var(--skeleton));
+    background-size: 200% 100%; animation: skel 1.4s ease-in-out infinite;
+  }
+  span.dash-skeleton { display: inline-block; min-width: 3em; }
+  .ht-chart.dash-skeleton::after, .ht-habit-cells.dash-skeleton::after { inset: 0; }
+  @keyframes skel { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+  @media (prefers-reduced-motion: reduce) { .dash-skeleton::after { animation: none; } }
+  /* Let the sleep window wrap at the dash on narrow cards instead of overflowing. */
+  .ht-kpi-value > .ht-sep { white-space: normal; }
+
+</style>
+<style>
+  .ht {
+    --ht-orange: #d97757; --ht-blue: #4a83c4; --ht-awake: #e8c9b2; --ht-kraft: #c08a5f;
+    --ht-tint: color-mix(in srgb, #d97757 9%, var(--color-panel));
+    --ht-tint-strong: color-mix(in srgb, #d97757 18%, var(--color-panel));
+    --ht-tint-blue: color-mix(in srgb, #4a83c4 9%, var(--color-panel));
+    --ht-tint-kraft: color-mix(in srgb, #d4a27f 14%, var(--color-panel));
+    --ht-stripe: color-mix(in srgb, var(--color-fg) 3%, var(--color-panel));
+    --ht-line: color-mix(in srgb, #d97757 22%, var(--color-border-line));
+    display: flex; flex-direction: column; gap: var(--cds-gap-md); font-family: var(--font-anthropic-sans); color: var(--color-fg);
+  }
+  .ht.ht-dark { --ht-orange: #d4704f; --ht-blue: #5b93d3; --ht-awake: #6e5848; --ht-kraft: #d4a27f; }
+
+  .ht-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--cds-gap-md); }
+  .ht-brand { display: flex; align-items: center; gap: var(--cds-gap-sm); min-width: 0; }
+  .ht-mark { flex: none; display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--ht-orange); color: #fff; }
+  .ht-mark svg { width: 22px; height: 22px; }
+  .ht-eyebrow { margin: 0; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); letter-spacing: .06em; text-transform: uppercase; }
+  .ht-title { margin: 0; font-family: var(--font-anthropic-serif); font-weight: 400; font-size: calc(var(--cds-font-size-title) * 1.25); line-height: 1.1; }
+
+  .ht-hero { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--cds-gap-md); padding: var(--cds-pad-lg) calc(var(--cds-pad-lg) * 1.25); border-radius: calc(var(--cds-radius) * 1.5); background: linear-gradient(135deg, var(--ht-tint-strong), var(--ht-tint-kraft) 70%); border: 1px solid var(--ht-line); }
+  .ht-hero-text { min-width: 0; flex: 1 1 22rem; }
+  .ht-lede { margin: 0; max-width: 66ch; font-size: var(--cds-font-size-body); line-height: 1.75; color: var(--color-fg); }
+  .ht-hl { font-weight: var(--cds-font-weight-medium); padding: 1px 7px; border-radius: 6px; background: var(--color-panel); box-shadow: inset 0 -2px 0 var(--ht-orange); white-space: nowrap; }
+  .ht-empty { margin: var(--cds-gap-sm) 0 0; max-width: 64ch; color: var(--color-fg-muted); }
+  .ht-controls { display: flex; flex-direction: column; align-items: flex-end; gap: var(--cds-gap-xs); }
+  .ht-controls label { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .ht-range-dates { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); font-variant-numeric: tabular-nums; }
+
+  .ht-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--cds-gap-md); }
+  .ht-card { min-width: 0; background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); }
+  .ht-kpi { --tone: var(--ht-orange); display: flex; flex-direction: column; gap: 6px; border-top: 3px solid var(--tone); }
+  .ht-kpi[data-tone="blue"] { --tone: var(--ht-blue); }
+  .ht-kpi[data-tone="kraft"] { --tone: var(--ht-kraft); }
+  .ht-kpi.is-met { --tone: var(--ht-blue); }
+  .ht-kpi.is-below { --tone: var(--ht-orange); }
+  .ht-status { font-weight: var(--cds-font-weight-medium); color: var(--color-fg); white-space: nowrap; }
+  .ht-status::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; vertical-align: 1px; background: var(--tone); }
+  .ht-kpi-head { display: flex; align-items: center; gap: 8px; }
+  .ht-icon { flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--tone); background: color-mix(in srgb, var(--tone) 14%, var(--color-panel)); }
+  .ht-icon svg { width: 16px; height: 16px; }
+  .ht-kpi-label { margin: 0; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); line-height: 1.3; }
+  .ht-kpi-value { margin: 2px 0 0; font-family: var(--font-anthropic-serif); font-weight: 400; font-size: calc(var(--cds-font-size-title) * 1.05); line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .ht-kpi-value > span { white-space: nowrap; }
+  .ht-kpi-value .ht-sep { color: var(--color-fg-muted); }
+  .ht-kpi-sub { margin: 0; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); line-height: 1.45; font-variant-numeric: tabular-nums; }
+  .ht-meter { position: relative; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--tone) 14%, var(--color-panel)); margin: 2px 0; }
+  .ht-meter-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; }
+  .ht-meter-goal { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--color-fg); opacity: .55; }
+  .ht-delta { display: inline-block; font-weight: var(--cds-font-weight-medium); color: var(--color-fg-muted); white-space: nowrap; padding: 1px 8px; border-radius: 999px; background: var(--ht-stripe); }
+  .ht-delta.is-good { color: var(--color-ok); background: color-mix(in srgb, var(--color-ok) 12%, var(--color-panel)); }
+  .ht-delta.is-bad { color: var(--color-bad); background: color-mix(in srgb, var(--color-bad) 12%, var(--color-panel)); }
+  .ht-delta.is-good::before { content: "▲ "; font-size: .8em; }
+  .ht-delta.is-bad::before { content: "▼ "; font-size: .8em; }
+
+  .ht-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--cds-gap-md); }
+  .ht-panel { display: flex; flex-direction: column; gap: var(--cds-gap-sm); }
+  .ht-panel-head { display: flex; align-items: center; gap: 8px; }
+  .ht-panel-head .ht-icon { --tone: var(--ht-orange); }
+  .ht-panel-head[data-tone="blue"] .ht-icon { --tone: var(--ht-blue); }
+  .ht-panel-head[data-tone="kraft"] .ht-icon { --tone: var(--ht-kraft); }
+  .ht-h2 { margin: 0; font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); }
+  .ht-desc { margin: 0; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); line-height: 1.45; }
+  .ht-legend { display: flex; flex-wrap: wrap; gap: var(--cds-gap-xs) var(--cds-gap-md); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .ht-key { display: inline-flex; align-items: center; gap: 6px; }
+  .ht-key[hidden] { display: none; }
+  .ht-swatch { display: inline-block; width: 14px; height: 10px; border-radius: 3px; }
+  .ht-swatch.is-orange { background: var(--ht-orange); }
+  .ht-swatch.is-blue { background: var(--ht-blue); }
+  .ht-swatch.is-awake { background: var(--ht-awake); }
+  .ht-swatch.is-skipped { background: transparent; box-shadow: inset 0 0 0 1.5px var(--cds-chart-muted); }
+  .ht-swatch-line { display: inline-block; width: 16px; height: 0; border-top: 2px dashed var(--cds-chart-reference); }
+  .ht-swatch-ink { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--color-fg); }
+
+  .ht-chart { position: relative; min-width: 0; }
+  .ht-chart-schedule { min-height: 150px; }
+  .ht-chart-duration { min-height: 240px; }
+  .ht-svg { display: block; overflow: visible; }
+  .ht-svg text { font-family: var(--font-anthropic-sans); font-size: var(--cds-font-size-caption); fill: var(--cds-text-secondary); }
+  .ht-svg .ht-val { fill: var(--color-fg); font-weight: var(--cds-font-weight-medium); font-variant-numeric: tabular-nums; }
+  .ht-note { margin: 0; padding: var(--cds-pad-md) 0; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .ht-tip { position: absolute; z-index: 5; pointer-events: none; min-width: 150px; max-width: 240px; padding: var(--cds-pad-sm) var(--cds-pad-md); background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-top: 3px solid var(--ht-orange); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); font-size: var(--cds-font-size-caption); line-height: 1.5; color: var(--color-fg); font-variant-numeric: tabular-nums; }
+  .ht-tip[hidden] { display: none; }
+  .ht-tip-title { font-weight: var(--cds-font-weight-medium); margin-bottom: 2px; }
+  .ht-tip-row { display: flex; justify-content: space-between; gap: var(--cds-gap-md); }
+  .ht-tip-row span:first-child { color: var(--cds-text-secondary); }
+
+  .ht-habits { display: flex; flex-direction: column; gap: var(--cds-gap-sm); }
+  .ht-habit { display: grid; grid-template-columns: minmax(110px, 10.5rem) minmax(0, 1fr) 4.5rem; align-items: center; gap: var(--cds-gap-sm); }
+  .ht-habit-name { display: inline-flex; align-items: center; gap: 6px; font-size: var(--cds-font-size-caption); color: var(--color-fg); line-height: 1.3; }
+  .ht-habit-name svg { flex: none; width: 15px; height: 15px; color: var(--ht-kraft); }
+  .ht-habit-cells { position: relative; min-width: 0; min-height: 14px; }
+  .ht-habit-rate { text-align: right; font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .ht-habit-pct { display: block; font-size: var(--cds-font-size-body); font-weight: var(--cds-font-weight-medium); }
+  .ht-habit-frac { display: block; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .ht-habit-dates { font-size: var(--cds-font-size-caption); color: var(--cds-text-secondary); min-height: 1.2em; }
+  .ht-habit-dates > div { display: flex; justify-content: space-between; gap: var(--cds-gap-sm); }
+
+  .ht-table-wrap { overflow-x: auto; border-radius: calc(var(--cds-radius) * .75); border: 1px solid var(--color-border-line); }
+  .ht-table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; }
+  .ht-table th { text-align: left; font-weight: var(--cds-font-weight-medium); color: var(--color-fg); background: var(--ht-tint); padding: var(--cds-pad-sm); border-bottom: 1px solid var(--ht-line); white-space: nowrap; }
+  .ht-table td { padding: var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+  .ht-table tbody tr:nth-child(even) td { background: var(--ht-stripe); }
+  .ht-table tbody tr:last-child td { border-bottom: 0; }
+  .ht-table .ht-num { text-align: right; }
+  .ht-table td.ht-muted { color: var(--color-fg-muted); }
+  .ht-table td.ht-note-cell { white-space: normal; min-width: 12rem; max-width: 22rem; line-height: 1.4; }
+  .ht-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+  .ht-pointers { list-style: none; counter-reset: pt; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--cds-gap-sm); }
+  .ht-pointers li { counter-increment: pt; display: grid; grid-template-columns: 26px 1fr; gap: var(--cds-gap-sm); align-items: start; padding: var(--cds-pad-sm) var(--cds-pad-md); border-radius: var(--cds-radius); background: var(--ht-tint); line-height: 1.55; }
+  .ht-pointers li::before { content: counter(pt); display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--ht-tint-strong); box-shadow: inset 0 0 0 1.5px var(--ht-orange); color: var(--color-fg); font-size: var(--cds-font-size-caption); font-weight: var(--cds-font-weight-medium); }
+
+  .ht-defs { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .ht-defs summary { cursor: pointer; color: var(--color-fg); }
+  .ht-defs dl { margin: var(--cds-gap-sm) 0 0; display: grid; grid-template-columns: minmax(8rem, max-content) 1fr; gap: var(--cds-gap-xs) var(--cds-gap-md); }
+  .ht-defs dt { color: var(--color-fg); }
+  .ht-defs dd { margin: 0; line-height: 1.45; }
+
+  @media (max-width: 520px) {
+    .ht-controls { align-items: flex-start; }
+    .ht-defs dl { grid-template-columns: 1fr; }
+    .ht-defs dd { margin-bottom: var(--cds-gap-xs); }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+<div class="ht" id="ht">
+  <header class="ht-top" id="ht-top">
+    <div class="ht-brand">
+      <span class="ht-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span>
+      <div>
+        <p class="ht-eyebrow">SIddharth Uppal</p>
+        <h1 class="ht-title" id="sleep">Sleep Tracker</h1>
+      </div>
+    </div>
+  </header>
+
+  <div class="ht-hero" id="sleep-hero">
+    <div class="ht-hero-text">
+      <p class="ht-lede" id="ht-lede">Averaging <span class="ht-hl" data-draw="avg-sleep" data-source="summary" data-field="avg_sleep_hm" data-row="0">—</span> of sleep a night across <span data-draw="n-nights" data-source="summary" data-field="nights_logged" data-row="0">—</span> logged <span data-draw="nights-word">—</span>, <span data-draw="goal-gap" data-source="summary" data-field="goal_gap_label" data-row="0">—</span> the <span data-draw="goal">—</span> guideline, usually falling asleep around <span class="ht-hl" data-draw="avg-asleep" data-source="summary" data-field="avg_asleep_clock" data-row="0">—</span> and waking around <span class="ht-hl" data-draw="avg-woke" data-source="summary" data-field="avg_woke_clock" data-row="0">—</span>.</p>
+      <p class="ht-empty" id="ht-empty" hidden>No nights logged yet.</p>
+      <p class="ht-empty" id="ht-undated" hidden><span data-draw="undated" data-source="summary" data-field="undated" data-row="0">—</span> row(s) in the sheet are left out because their date couldn’t be read.</p>
+    </div>
+    <div class="ht-controls" id="ht-controls">
+      <label for="ht-range">Show</label>
+      <select class="dash-select ht-range" id="ht-range" aria-label="Time range">
+        <option value="7">Last 7 days</option>
+        <option value="14">Last 14 days</option>
+        <option value="30" selected>Last 30 days</option>
+        <option value="90">Last 90 days</option>
+        <option value="all">All nights</option>
+      </select>
+      <span class="ht-range-dates"><span data-draw="range-from" data-source="summary" data-field="range_from" data-row="0">—</span> – <span data-draw="range-to" data-source="summary" data-field="range_to" data-row="0">—</span></span>
+    </div>
+  </div>
+
+  <div class="ht-kpis" id="ht-kpis" role="group" aria-label="Sleep at a glance">
+    <div class="ht-card ht-kpi" id="kpi-latest" data-tone="orange">
+      <div class="ht-kpi-head"><span class="ht-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18V8M3 14h18v4M21 14v-1a3 3 0 0 0-3-3h-7v4"></path><circle cx="7" cy="11.5" r="1.6"></circle></svg></span><p class="ht-kpi-label">Latest night</p></div>
+      <p class="ht-kpi-value"><span class="dash-skeleton" data-draw="last-sleep" data-source="summary" data-field="last_sleep_hm" data-row="0">—</span></p>
+      <div class="ht-meter" data-draw="last-meter" data-source="summary" data-field="last_sleep_min" data-row="0"></div>
+      <p class="ht-kpi-sub"><span data-draw="last-date" data-source="summary" data-field="last_day" data-row="0">—</span> · <span data-draw="last-asleep" data-source="summary" data-field="last_asleep_clock" data-row="0">—</span> → <span data-draw="last-woke" data-source="summary" data-field="last_woke_clock" data-row="0">—</span></p>
+      <p class="ht-kpi-sub"><span class="ht-delta" data-draw="last-change" data-source="summary" data-field="last_change_label" data-row="0">—</span> vs. earlier nights</p>
+    </div>
+    <div class="ht-card ht-kpi" id="kpi-average" data-tone="orange">
+      <div class="ht-kpi-head"><span class="ht-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span><p class="ht-kpi-label">Average sleep · <span data-draw="window">—</span></p></div>
+      <p class="ht-kpi-value"><span class="dash-skeleton" data-draw="avg-sleep" data-source="summary" data-field="avg_sleep_hm" data-row="0">—</span></p>
+      <div class="ht-meter" data-draw="avg-meter" data-source="summary" data-field="avg_sleep_min" data-row="0"></div>
+      <p class="ht-kpi-sub"><span data-draw="goal-met" data-source="summary" data-field="nights_goal_met" data-row="0">—</span> of <span data-draw="n-nights" data-source="summary" data-field="nights_logged" data-row="0">—</span> nights reached <span data-draw="goal">—</span> (marked on the bar)</p>
+    </div>
+    <div class="ht-card ht-kpi" id="kpi-schedule" data-tone="kraft">
+      <div class="ht-kpi-head"><span class="ht-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg></span><p class="ht-kpi-label">Typical sleep window · <span data-draw="window">—</span></p></div>
+      <p class="ht-kpi-value"><span class="dash-skeleton" data-draw="avg-asleep" data-source="summary" data-field="avg_asleep_clock" data-row="0">—</span><span class="ht-sep"> – </span><span class="dash-skeleton" data-draw="avg-woke" data-source="summary" data-field="avg_woke_clock" data-row="0">—</span></p>
+      <p class="ht-kpi-sub">Sleep start varies by ±<span data-draw="onset-sd" data-source="summary" data-field="onset_sd_min" data-row="0">—</span> min</p>
+    </div>
+    <div class="ht-card ht-kpi" id="kpi-efficiency" data-tone="blue">
+      <div class="ht-kpi-head"><span class="ht-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="4.5"></circle><circle cx="12" cy="12" r="1"></circle></svg></span><p class="ht-kpi-label">Sleep efficiency · <span data-draw="window">—</span></p></div>
+      <p class="ht-kpi-value"><span class="dash-skeleton" data-draw="efficiency" data-source="summary" data-field="efficiency_pct" data-row="0">—</span>%</p>
+      <div class="ht-meter" data-draw="eff-meter" data-source="summary" data-field="efficiency_pct" data-row="0"></div>
+      <p class="ht-kpi-sub"><span class="ht-status" data-draw="eff-status" data-source="summary">—</span> · target <span data-draw="eff-target">—</span> or higher</p>
+      <p class="ht-kpi-sub">Falls asleep in ~<span data-draw="latency" data-source="summary" data-field="avg_latency_min" data-row="0">—</span> min · <span data-draw="wakings" data-source="summary" data-field="avg_wakings" data-row="0">—</span> wakings a night</p>
+    </div>
+    <div class="ht-card ht-kpi" id="kpi-habits" data-tone="blue">
+      <div class="ht-kpi-head"><span class="ht-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="4"></rect><path d="M8.5 12.5l2.5 2.5 4.5-5"></path></svg></span><p class="ht-kpi-label">Habits kept · <span data-draw="window">—</span></p></div>
+      <p class="ht-kpi-value"><span class="dash-skeleton" data-draw="habits-pct" data-source="summary" data-field="habits_pct" data-row="0">—</span>%</p>
+      <div class="ht-meter" data-draw="habits-meter" data-source="summary" data-field="habits_pct" data-row="0"></div>
+      <p class="ht-kpi-sub"><span class="ht-status" data-draw="habits-status" data-source="summary">—</span> · target <span data-draw="habits-target">—</span> or higher</p>
+      <p class="ht-kpi-sub"><span data-draw="habits-done" data-source="summary" data-field="habits_done" data-row="0">—</span> of <span data-draw="habits-logged" data-source="summary" data-field="habits_logged" data-row="0">—</span> check-ins done</p>
+    </div>
+  </div>
+
+  <section class="ht-card ht-panel" id="schedule">
+    <div class="ht-panel-head"><span class="ht-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h11M4 12h16M4 17h8"></path></svg></span><h2 class="ht-h2" id="schedule-title">Sleep schedule, night by night</h2></div>
+    <p class="ht-desc">Each bar runs from getting into bed to getting up, newest night at the top. The number at the end is hours asleep.</p>
+    <div class="ht-legend" aria-hidden="true">
+      <span class="ht-key"><i class="ht-swatch is-orange"></i>Asleep</span>
+      <span class="ht-key"><i class="ht-swatch is-awake"></i>In bed, awake</span>
+      <span class="ht-key"><i class="ht-swatch-line"></i>Average sleep and wake time</span>
+    </div>
+    <div class="ht-chart ht-chart-schedule" id="schedule-chart" data-draw="schedule" data-source="shown_nights summary"></div>
+  </section>
+
+  <div class="ht-grid2">
+    <section class="ht-card ht-panel" id="duration">
+      <div class="ht-panel-head"><span class="ht-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V11M10 20V6M15 20v-7M20 20V9"></path></svg></span><h2 class="ht-h2" id="duration-title">Hours asleep per night</h2></div>
+      <p class="ht-desc">Bars that reach the dashed <span data-draw="goal">—</span> line turn blue. The shaded band is the guideline zone.</p>
+      <div class="ht-legend" aria-hidden="true">
+        <span class="ht-key"><i class="ht-swatch is-orange"></i>Under <span data-draw="goal">—</span></span>
+        <span class="ht-key"><i class="ht-swatch is-blue"></i><span data-draw="goal">—</span> or more</span>
+        <span class="ht-key" id="avg7-key" hidden><i class="ht-swatch-ink"></i>7-night average</span>
+        <span class="ht-key"><i class="ht-swatch-line"></i><span data-draw="goal">—</span> guideline</span>
+      </div>
+      <div class="ht-chart ht-chart-duration" id="duration-chart" data-draw="duration" data-source="shown_nights"></div>
+    </section>
+
+    <section class="ht-card ht-panel" id="habits">
+      <div class="ht-panel-head" data-tone="blue"><span class="ht-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="4"></rect><path d="M8.5 12.5l2.5 2.5 4.5-5"></path></svg></span><h2 class="ht-h2" id="habits-title">Habits, night by night</h2></div>
+      <p class="ht-desc">Oldest night on the left. Hover a square for its date.</p>
+      <div class="ht-legend" aria-hidden="true">
+        <span class="ht-key"><i class="ht-swatch is-blue"></i>Done</span>
+        <span class="ht-key"><i class="ht-swatch is-skipped"></i>Skipped</span>
+      </div>
+      <div class="ht-habits" data-source="shown_nights habit_rates">
+        <div class="ht-habit" id="habit-sunlight">
+          <span class="ht-habit-name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"></path></svg><span>Early morning sunlight</span></span>
+          <div class="ht-habit-cells" data-draw="habit-cells" data-habit="sunlight"></div>
+          <span class="ht-habit-rate"><span class="ht-habit-pct"><span data-draw="habit-pct" data-habit="sunlight" data-source="habit_rates" data-where="habit=sunlight" data-field="pct">—</span>%</span><span class="ht-habit-frac"><span data-draw="habit-done" data-habit="sunlight" data-source="habit_rates" data-where="habit=sunlight" data-field="done">—</span> of <span data-draw="habit-logged" data-habit="sunlight" data-source="habit_rates" data-where="habit=sunlight" data-field="logged">—</span></span></span>
+        </div>
+        <div class="ht-habit" id="habit-no-screens-before">
+          <span class="ht-habit-name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2.5"></rect><path d="M4 4l16 16"></path></svg><span>No screens before sleep</span></span>
+          <div class="ht-habit-cells" data-draw="habit-cells" data-habit="no_screens_before"></div>
+          <span class="ht-habit-rate"><span class="ht-habit-pct"><span data-draw="habit-pct" data-habit="no_screens_before" data-source="habit_rates" data-where="habit=no_screens_before" data-field="pct">—</span>%</span><span class="ht-habit-frac"><span data-draw="habit-done" data-habit="no_screens_before" data-source="habit_rates" data-where="habit=no_screens_before" data-field="done">—</span> of <span data-draw="habit-logged" data-habit="no_screens_before" data-source="habit_rates" data-where="habit=no_screens_before" data-field="logged">—</span></span></span>
+        </div>
+        <div class="ht-habit" id="habit-no-screens-after">
+          <span class="ht-habit-name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2.5"></rect><path d="M11 18h2"></path></svg><span>No screens after waking</span></span>
+          <div class="ht-habit-cells" data-draw="habit-cells" data-habit="no_screens_after"></div>
+          <span class="ht-habit-rate"><span class="ht-habit-pct"><span data-draw="habit-pct" data-habit="no_screens_after" data-source="habit_rates" data-where="habit=no_screens_after" data-field="pct">—</span>%</span><span class="ht-habit-frac"><span data-draw="habit-done" data-habit="no_screens_after" data-source="habit_rates" data-where="habit=no_screens_after" data-field="done">—</span> of <span data-draw="habit-logged" data-habit="no_screens_after" data-source="habit_rates" data-where="habit=no_screens_after" data-field="logged">—</span></span></span>
+        </div>
+        <div class="ht-habit" id="habit-made-bed">
+          <span class="ht-habit-name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18V8M3 14h18v4M21 14v-1a3 3 0 0 0-3-3h-7v4"></path></svg><span>Made bed after waking</span></span>
+          <div class="ht-habit-cells" data-draw="habit-cells" data-habit="made_bed"></div>
+          <span class="ht-habit-rate"><span class="ht-habit-pct"><span data-draw="habit-pct" data-habit="made_bed" data-source="habit_rates" data-where="habit=made_bed" data-field="pct">—</span>%</span><span class="ht-habit-frac"><span data-draw="habit-done" data-habit="made_bed" data-source="habit_rates" data-where="habit=made_bed" data-field="done">—</span> of <span data-draw="habit-logged" data-habit="made_bed" data-source="habit_rates" data-where="habit=made_bed" data-field="logged">—</span></span></span>
+        </div>
+        <div class="ht-habit">
+          <span></span>
+          <div class="ht-habit-dates" data-draw="habit-dates" data-source="shown_nights"></div>
+          <span></span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="ht-card ht-panel" id="log">
+    <div class="ht-panel-head" data-tone="kraft"><span class="ht-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2.5"></rect><path d="M4 9.5h16M4 14.5h16M10 9.5V20"></path></svg></span><h2 class="ht-h2" id="log-title">Night log</h2></div>
+    <p class="ht-desc">Every night in the range, newest first. The dot by “Time asleep” is blue when the night reached <span data-draw="goal">—</span>.</p>
+    <div class="ht-table-wrap">
+      <table class="ht-table" id="log-table" data-source="shown_nights" data-row-key="date">
+        <thead>
+          <tr>
+            <th data-field="date">Morning of</th>
+            <th data-field="bed_clock">In bed</th>
+            <th data-field="asleep_clock">Asleep</th>
+            <th data-field="woke_clock">Woke</th>
+            <th data-field="up_clock">Out of bed</th>
+            <th class="ht-num" data-field="sleep_hm">Time asleep</th>
+            <th class="ht-num" data-field="in_bed_hm">Time in bed</th>
+            <th class="ht-num" data-field="efficiency_pct">Efficiency</th>
+            <th class="ht-num" data-field="latency_min">Fell asleep in</th>
+            <th class="ht-num" data-field="wakings">Wakings</th>
+            <th class="ht-num" data-field="habits_label">Habits</th>
+            <th data-field="notes">Notes</th>
+          </tr>
+        </thead>
+        <tbody data-draw="log-rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="ht-card ht-panel" id="notes">
+    <div class="ht-panel-head"><span class="ht-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h10l4 4v12H5z"></path><path d="M15 4v4h4M8.5 12h7M8.5 15.5h5"></path></svg></span><h2 class="ht-h2" id="notes-title">Notes</h2></div>
+    <ol class="ht-pointers" id="notes-list">
+      <li>Writing down my sleep schedule is really helping.</li>
+      <li>Actually trying to sleep is what gets me to sleep. I get distracted using my phone and laptop, and by overthinking, and that’s causing problems.</li>
+      <li>I’m spending too much time in bed after waking up instead of getting up.</li>
+      <li>Eating a kiwi before bed is helping.</li>
+      <li>Clearing up my sinuses helps me sleep better.</li>
+      <li>I spend a lot of time sitting in bed during the day, even when I’m not sleeping.</li>
+    </ol>
+  </section>
+
+  <details class="ht-defs" id="definitions">
+    <summary>How these numbers are worked out</summary>
+    <dl>
+      <dt>Time asleep</dt><dd>From “Fell asleep” to “Woke up”.</dd>
+      <dt>Time in bed</dt><dd>From “Got into bed” to “Got out of bed”.</dd>
+      <dt>Sleep efficiency</dt><dd>Time asleep as a share of time in bed, over all nights in the range.</dd>
+      <dt>Fell asleep in</dt><dd>Minutes from getting into bed to falling asleep.</dd>
+      <dt>Sleep start varies by</dt><dd>The standard deviation of the fall-asleep time across the nights in the range. Lower means a steadier bedtime.</dd>
+      <dt>Guideline</dt><dd>The reference line is <span data-draw="goal">—</span> of sleep a night. The American Academy of Sleep Medicine advises adults to sleep at least 7 hours a night.</dd>
+      <dt>Habits kept</dt><dd>Yes answers as a share of all habit answers given. Blank cells don’t count.</dd>
+      <dt>Ranges</dt><dd>“Last 7 days” and the others count back from the latest night in the log.</dd>
+    </dl>
+  </details>
+</div>
+</main>
+<script src="d3.min.js"></script>
+<script src="config.js"></script>
+<script src="runtime.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
